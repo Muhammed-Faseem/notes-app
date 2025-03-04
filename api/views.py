@@ -1,10 +1,10 @@
-from django.shortcuts import render
+import uuid  # Import the uuid module
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
-from .serializers import NoteSerializer
-from .models import Note
+from .dynamodb_service import DynamoDBService
 
-# Create your views here.
+# Initialize DynamoDBService
+dynamodb_service = DynamoDBService(table_name='Note')
 
 @api_view(['GET'])
 def getRoutes(request):
@@ -31,48 +31,42 @@ def getRoutes(request):
             'Endpoint': '/notes/id/update/',
             'method': 'PUT',
             'body': {'body': ""},
-            'description': 'Creates an existing note with data sent in post request'
+            'description': 'Updates an existing note with data sent in post request'
         },
         {
             'Endpoint': '/notes/id/delete/',
             'method': 'DELETE',
             'body': None,
-            'description': 'Deletes and exiting note'
+            'description': 'Deletes an existing note'
         },
     ]
     return Response(routes)
 
 @api_view(['GET'])
 def getNotes(request):
-    notes = Note.objects.all().order_by('-created')
-    serializer = NoteSerializer(notes, many=True)
-    return Response(serializer.data)
+    notes = dynamodb_service.list_items()
+    return Response(notes)
 
 @api_view(['GET'])
 def getNote(request, pk):
-    note = Note.objects.get(id=pk)
-    serializer = NoteSerializer(note, many=False)
-    return Response(serializer.data)
+    note = dynamodb_service.get_item({'id': pk})
+    return Response(note)
 
 @api_view(['PUT'])
 def updateNote(request, pk):
-    note = Note.objects.get(id=pk)
-    serializer = NoteSerializer(instance=note, data=request.data)
-    if serializer.is_valid():
-        serializer.save()
-    return Response(serializer.data)
+    data = request.data
+    response = dynamodb_service.put_item({'id': pk, 'body': data['body']})
+    return Response(response)
 
 @api_view(['DELETE'])
 def deleteNote(request, pk):
-    note = Note.objects.get(id=pk)
-    note.delete()
-    return Response('Note was deleted!')
+    response = dynamodb_service.delete_item({'id': pk})
+    return Response(response)
 
 @api_view(['POST'])
 def createNote(request):
     data = request.data
-    note = Note.objects.create(
-        body=data['body']
-    )
-    serializer = NoteSerializer(note, many=False)
-    return Response(serializer.data)
+    # Generate a unique ID for the new note
+    note_id = str(uuid.uuid4())
+    response = dynamodb_service.put_item({'id': note_id, 'body': data['body']})
+    return Response(response)
